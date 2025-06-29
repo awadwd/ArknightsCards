@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+
+<body>
+
+<h1>因服务器异常，无法访问当前登录</h1>
+<h2>Error statusCode:404 ,该异常不影响您游玩本项目</h2>
+<span id="spanId">5</span>秒后跳转回到首页<a href="/ArknightsCards/">未自动跳转？请点我！</a>
+</body>
+</html>
+
+<script type="text/javascript">
+
+    var ti =5;
+
+    var time = document.getElementById("spanId")
+
+    function a() {
+        document.getElementById("spanId").innerText = "";
+        document.getElementById("spanId").innerText = ti ;
+        ti--
+        if(ti<=0) {
+            location.href = "/ArknightsCards/"
+        }
+        setTimeout(a, 1000);
+    }
+    //执行
+    setTimeout(a, 1000);
+
+</script>

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>明日方舟通行证抽卡模拟器 - 优化版</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@latest/dist/av-min.js"></script>
+    <link rel="stylesheet" href="css/Style.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://web.hycdn.cn/arknights/official/_next/static/chunks/507-c18ff69ee58dafbe.js"></script>
+    <style>
+    </style>
+</head>
+<body>
+<audio id="backgroundMusic" loop>
+    <source th:src="@{/img/bgm.ea4286.mp3}" type="audio/mpeg">
+    Your browser does not support the audio element.
+</audio>
+
+<div id="app">
+    <div v-if="loading" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <h2>正在加载通行证数据...</h2>
+        <p>从云端获取最新价格信息</p>
+    </div>
+
+    <!-- 多抽结果弹窗 -->
+    <div class="modal-overlay" v-if="showMultiDrawModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">本轮3盒抽卡结果</h2>
+                <button class="modal-close" @click="showMultiDrawModal = false">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div v-for="(result, index) in multiDrawResults" :key="index" class="multi-draw-result-item">
+                <h3 style="color: var(--arknights-orange); margin-bottom: 15px;">第 {{ index + 1 }} 盒</h3>
+                <div class="result-detail">{{ result.battleResult }}</div>
+                <div>分数变化: {{ result.scoreChange }}</div>
+
+                <div class="multi-draw-results">
+                    <div class="multi-draw-card">
+                        <div class="multi-draw-header">你的卡牌</div>
+                        <div class="multi-draw-body">
+                            <div class="multi-draw-name">{{ result.playerCard.name }}</div>
+                            <div class="multi-draw-price">¥{{ result.playerCard.price }}</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <div style="font-size: 1.5rem; font-weight: bold; color: var(--arknights-orange);">VS</div>
+                    </div>
+
+                    <div class="multi-draw-card">
+                        <div class="multi-draw-header">对手卡牌</div>
+                        <div class="multi-draw-body">
+                            <div class="multi-draw-name">{{ result.opponentCard.name }}</div>
+                            <div class="multi-draw-price">¥{{ result.opponentCard.price }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-warning" @click="showMultiDrawModal = false; nextRound();" style="margin-top: 20px; width: 100%;">
+                <i class="fas fa-arrow-right"></i> 继续游戏
+            </button>
+        </div>
+    </div>
+
+    <!-- 游戏结束弹窗 -->
+    <div class="game-over" v-if="gameOver">
+        <h2>游戏结束！</h2>
+        <p>你的积分已全部输光</p>
+        <button class="restart-btn" @click="restartGame">
+            <i class="fas fa-redo"></i> 重新开始
+        </button>
+    </div>
+
+    <!-- 卡片价格详情模态框 -->
+    <div class="modal-overlay" v-if="showCardModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">通行证价格详情</h2>
+                <button class="modal-close" @click="showCardModal = false">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="pool-config">
+                <div class="price-category">
+                    <div class="category-title">高价卡牌(>50元)</div>
+                    <div class="card-grid">
+                        <div v-for="(card, index) in highPriceCards" :key="'high-'+index" class="card-preview">
+                            <div class="card-preview-name">{{ card.name }}</div>
+                            <div class="card-preview-level">{{ card.level }}</div>
+                            <div class="card-preview-price">¥{{ card.price }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="price-category">
+                    <div class="category-title">低价卡牌(<50元)</div>
+                    <div class="card-grid">
+                        <div v-for="(card, index) in lowPriceCards" :key="'low-'+index" class="card-preview">
+                            <div class="card-preview-name">{{ card.name }}</div>
+                            <div class="card-preview-level">{{ card.level }}</div>
+                            <div class="card-preview-price">¥{{ card.price }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <img src="img/PRTS.png"/>
+            </div>
+            <h1>明日方舟通行证模拟器</h1>
+            <div class="subtitle">策略 · 运气 · 对战 · 云端版</div>
+        </header>
+
+        <div class="api-status">
+            <div class="status-indicator" :class="{'status-connected': apiConnected, 'status-disconnected': !apiConnected}"></div>
+            <div>云端连接状态: {{ apiConnected ? '已连接' : '未连接' }}</div>
+            <div v-if="apiError" style="color: var(--danger); margin-left: 15px;">错误: {{ apiError }}</div>
+        </div>
+
+        <div class="game-container">
+            <div class="main-content">
+                <div class="panel">
+                    <div class="panel-title">
+                        <i class="fas fa-user"></i>
+                        <span>玩家信息</span> <button onclick="location.href='./login'" disabled class="btn btn-success" style="width: 100px;height: 50px">登录(内测，暂未开放)</button>
+                    </div>
+                    <div class="mode-selector">
+                        <div class="mode-btn" :class="{active: gameMode === 'pve'}" @click="gameMode = 'pve'">
+                            <i class="fas fa-robot"></i> 人机对战
+                        </div>
+                        <div class="mode-btn" :class="{active: gameMode === 'pvp'}" @click="gameMode = 'pvp'">
+                            <i class="fas fa-users"></i> 真人玩家对战
+                        </div>
+                    </div>
+
+                    <div class="player-info">
+                        <div class="player-card">
+                            <div class="player-name">
+                                <i class="fas fa-user"></i>
+                                <span>玩家</span>
+                            </div>
+                            <div class="player-score">{{ playerScore }}分</div>
+                            <div class="player-stats">
+                                <div>已参与: {{ playerRounds }}轮</div>
+                                <div>胜率: {{ winRate }}%</div>
+                            </div>
+                        </div>
+                        <div class="player-card">
+                            <div class="player-name">
+                                <i :class="gameMode === 'pve' ? 'fas fa-robot' : 'fas fa-user'"></i>
+                                <span>{{ gameMode === 'pve' ? '对手' : '玩家2' }}</span>
+                            </div>
+                            <div class="player-score">{{ opponentScore }}分</div>
+                            <div class="player-stats">
+                                <div>已参与: {{ opponentRounds }}轮</div>
+                                <div>胜率: {{ opponentWinRate }}%</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-title">
+                            <span>当前轮次: {{ currentRound }}/25</span>
+                            <span>盒: {{ currentBox }}/3</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" :style="{width: roundProgress + '%'}"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">
+                        <i class="fas fa-dice"></i>
+                        <span>抽卡对战</span>
+                    </div>
+
+                    <div class="instructions">
+                        <h3>对战流程说明：</h3>
+                        <ol>
+                            <li>选择本轮投入的积分数量</li>
+                            <li>选择赌欧（价高者胜）或赌非（价低者胜）</li>
+                            <li>点击"开始决斗"按钮抽取卡牌并决出胜负</li>
+                            <li>第5轮开始可使用ALL IN功能</li>
+                        </ol>
+                    </div>
+
+                    <div class="draw-section">
+                        <div class="card-display">
+                            <div class="card" :class="{animated: cardsDrawn}">
+                                <div class="card-header">你的卡牌</div>
+                                <div class="card-body">
+                                    <div class="card-name">{{ playerCard.name || '待抽取' }}</div>
+                                    <div class="card-level">{{ playerCard.level || '-' }}</div>
+                                    <div class="card-price" v-if="playerCard.price">¥{{ playerCard.price }}</div>
+                                    <div v-else style="opacity: 0.7;">尚未抽卡</div>
+                                </div>
+                                <div class="card-footer">ID: {{ playerCard.id || '?' }}</div>
+                            </div>
+
+                            <div class="vs-text">
+                                <div>VS</div>
+                                <div style="font-size: 1rem; margin-top: 10px; color: #ccc;">第{{ currentRound }}轮</div>
+                            </div>
+
+                            <div class="card" :class="{animated: cardsDrawn}">
+                                <div class="card-header">对手卡牌</div>
+                                <div class="card-body">
+                                    <div class="card-name">{{ opponentCard.name || '待抽取' }}</div>
+                                    <div class="card-level">{{ opponentCard.level || '-' }}</div>
+                                    <div class="card-price" v-if="opponentCard.price">¥{{ opponentCard.price }}</div>
+                                    <div v-else style="opacity: 0.7;">尚未抽卡</div>
+                                </div>
+                                <div class="card-footer">ID: {{ opponentCard.id || '?' }}</div>
+                            </div>
+                        </div>
+
+                        <div class="bet-controls" v-if="!battleResult">
+                            <h3 style="text-align: center; margin-bottom: 20px; color: var(--arknights-orange);">选择投入分数</h3>
+                            <h4 style="text-align: center; margin-bottom: 20px; color: var(--arknights-orange);">你还有:{{ playerScore }}分</h4>
+                            <div class="bet-section">
+                                <div class="bet-amount"
+                                     v-for="bet in availableBets"
+                                     :key="bet.value"
+                                     :class="{selected: selectedBet === bet.value}"
+                                     @click="selectBet(bet.value)">
+                                    <div class="bet-amount-value">{{ bet.value }}</div>
+                                    <div class="bet-amount-label">积分</div>
+                                </div>
+                            </div>
+
+                            <div class="all-in-toggle"
+                                 :class="{active: isAllIn}"
+                                 v-if="currentRound >= 5">
+                                <input type="checkbox" id="allIn" v-model="isAllIn" :disabled="selectedBet === 0">
+                                <label for="allIn">ALL IN (胜利额外+50%)</label>
+                            </div>
+
+                            <div class="bet-options">
+                                <div class="bet-option" :class="{selected: playerChoice === '欧'}" @click="selectChoice('欧')">
+                                    <i class="fas fa-crown"></i>
+                                    <div class="bet-option-title">赌欧</div>
+                                    <div>价高者胜</div>
+                                    <div><---我寻思这边行</div>
+                                </div>
+                                <div class="bet-option" :class="{selected: playerChoice === '非'}" @click="selectChoice('非')">
+                                    <i class="fas fa-meteor"></i>
+                                    <div class="bet-option-title">赌非</div>
+                                    <div>价低者胜</div>
+                                    <div>我寻思这边行--></div>
+                                </div>
+                            </div>
+
+                            <div class="controls">
+                                <button class="btn btn-success" @click="startBattle" :disabled="playerChoice === '' || isDrawing">
+                                    <i class="fas fa-fist-raised"></i> 开始决斗
+                                </button>
+                                <button class="btn btn-warning" @click="drawThreeBoxes" :disabled="playerChoice === '' || isDrawing || isAllIn || currentBox !== 1">
+                                    <i class="fas fa-boxes"></i> 一次性抽3盒
+                                </button>
+                                <button class="btn btn-danger" @click="skipRound">
+                                    <i class="fas fa-forward"></i> 跳过本轮
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="result-section" v-if="battleResult">
+                            <div class="result-title">对战结果</div>
+                            <div class="result-detail">{{ battleResult }}</div>
+                            <div>分数变化: {{ scoreChange }}</div>
+                            <div v-if="battleResult === '胜利' && currentRound >= 15">额外奖励: +{{ Math.floor(scoreChangeValue * 0.05) }}分</div>
+
+                            <button class="btn btn-warning" @click="nextRound" style="margin-top: 20px;">
+                                <i class="fas fa-arrow-right"></i> 继续下一轮
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">
+                        <i class="fas fa-trophy"></i>
+                        <span>排行榜</span>
+                    </div>
+                    <div class="progress-container" style="margin-bottom: 20px;">
+                        <div class="progress-title">
+                            <span>活动进度</span>
+                            <span>{{ Math.round(overallProgress) }}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" :style="{width: overallProgress + '%'}"></div>
+                        </div>
+                    </div>
+
+                    <div class="ranking">
+                        <div v-for="(player, index) in leaderboard"
+                             :key="index"
+                             class="rank-item"
+                             :class="{'rank-1': index === 0, 'rank-2': index === 1, 'rank-3': index === 2}">
+                            <div class="rank-position">{{ index + 1 }}</div>
+                            <div class="rank-name">{{ player.name }}</div>
+                            <div class="rank-score">{{ player.score }}分</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="panel history-panel">
+                    <div class="panel-title">
+                        <i class="fas fa-history"></i>
+                        <span>对战记录</span>
+                    </div>
+                    <div v-for="(record, index) in battleHistory" :key="index" class="history-item">
+                        <div class="history-round">第{{ record.round }}轮</div>
+                        <div class="history-cards">
+                            <div>你的卡: {{ record.playerCard.name }} (¥{{ record.playerCard.price }})</div>
+                            <div>对手卡: {{ record.opponentCard.name }} (¥{{ record.opponentCard.price }})</div>
+                        </div>
+                        <div :class="['history-outcome', record.result === '胜利' ? 'win' : (record.result === '失败' ? 'lose' : 'draw')]">
+                            {{ record.result }}
+                        </div>
+                    </div>
+                    <div v-if="battleHistory.length === 0" style="text-align: center; padding: 40px 20px; opacity: 0.7;">
+                        <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
+                        <div>暂无对战记录</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">
+                        <i class="fas fa-coins"></i>
+                        <span>通行证价格表 (来自云端)</span>
+                    </div>
+                    <div class="pool-config">
+                        <div class="price-category">
+                            <div class="category-title">高价卡牌(>50元)</div>
+                            <div v-for="(card, index) in highPriceCards" :key="'high-'+index" class="card-item">
+                                <div class="card-item-name">{{ card.name }}\{{ card.level }}</div>
+                                <div class="card-item-price">¥{{ card.price }}</div>
+                            </div>
+                        </div>
+                        <div class="price-category">
+                            <div class="category-title">低价卡牌(<50元)</div>
+                            <div v-for="(card, index) in lowPriceCards" :key="'low-'+index" class="card-item">
+                                <div class="card-item-name">{{ card.name }}\{{ card.level }}</div>
+                                <div class="card-item-price">¥{{ card.price }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" @click="fetchCardsFromLeancloud" style="width: 100%; margin-top: 15px;">
+                        <i class="fas fa-sync"></i> 更新价格表
+                    </button>
+                    <div class="api-info">
+                        <div>数据来源: {{ apiConnected ? 'LeanCloud云端' : '本地备份' }}</div>
+                        <div>卡片数量: {{ highPriceCards.length + lowPriceCards.length }}</div>
+                        <div>最后更新: {{ lastUpdated }}</div>
+                        <div>当前状态: {{ apiConnected ? '已连接' : '未连接' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 运算代码导入 -->
+<script src="js/app.js"></script>
+<!-- 可注释留言区域 -->
+
+<!-- 待加入的新功能：1.玩家可以选择一次性抽完1轮的3盒；单抽的结果显示不变；
+多抽的结果显示则额外弹窗，玩家在5轮后选择ALLIN时不可多抽，并且当玩家剩余分数为0时，则弹出游戏失败，重新开始并刷新页面
+ 2.玩家可选择与机器对战或与真人对战，真人对战则是玩家1先抽1发显示结果后玩家2再次从池中抽取一发，注意：抽取时玩家1和玩家2不会重复
+ 2025/6/11 黄金洲-->
+
+<!--  -->
+<!--  -->
+</body>
+</html>

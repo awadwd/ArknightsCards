@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="Style.css"/>
+    <title>登录页面</title>
+
+    <!-- 最新版本的 Bootstrap 核心 CSS 文件 -->
+    <link rel="stylesheet" th:href="@{/css/bootstrap.min.css}">
+
+    <!-- 可选的 Bootstrap 主题文件（一般不用引入） -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/3.4.1/css/bootstrap-theme.min.css" integrity="sha384-6pzBo3FDv/PJ8r2KRkGHifhEocL+1X2rVCTTkUfGk7/0pbek5mMa1upzvWbrUbOZ" crossorigin="anonymous">
+
+    <!-- 最新的 Bootstrap 核心 JavaScript 文件 -->
+    <script th:src="@{/js/jquery-3.7.0.min.js}"></script>
+    <script th:src="@{/js/bootstrap.min.js}"></script>
+    <link rel="stylesheet" href="css/Style.css"/>
+</head>
+<body>
+
+<div class="" id="app" >
+
+    <div class="container">
+        <header>
+            <div class="logo">
+                <img src="img/PRTS.png"/>
+            </div>
+            <h1>明日方舟通行证模拟器</h1>
+            <div class="subtitle">策略 · 运气 · 对战 · 云端版</div>
+        </header>
+
+        <div class="game-container">
+            <div class="main-content">
+                <div class="title">
+                    <div class="panel">
+                        <h2>明日方舟通行证模拟器登录系统</h2>
+                    </div>
+
+                    <div class="player-card">
+                        <br>
+                        <div class="panel-title">
+                            <i class="fas fa-dice"></i>
+                            <span>账号密码登录</span>
+                        </div>
+                        <label class="">
+                            <input type="text" class="form-control" placeholder="请输入用户名" id="username" style="width:100%; border-radius: 10px; height: 40px;">
+                        </label>
+                        <br>
+                        <label class="">
+                            <input type="password" class="form-control" placeholder="请输入密码" id="password" style="width:100%; border-radius: 10px; height: 40px; margin-top: 30px;">
+                        </label>
+
+                        <br>
+                        <a href="#" style="float: right; margin: 10px">忘记密码</a>
+                        <br>
+                        <input type="button" id="login-btn" value="登录" class="btn btn-primary btn-lg btn-block" style="width: 100%;" onclick="login()"></input>
+                        <div class="checkbox">
+                            <label>
+                                <input type="checkbox" id="agree">我已阅读并同意<a href="./terms">《明日方舟通行证模拟器用户协议》</a>
+                                <p></p>
+                                <span>内测中..暂不支持注册</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+<script>
+    function login() {
+        var agree=$('#agree')[0].checked;
+        if (!agree) {
+            alert('请阅读并同意《明日方舟通行证模拟器用户协议》')
+        }else {
+            var name=$('#username').val();
+            var password=$('#password').val();
+            $.ajax({
+                type: "get",
+                url: "userlogin",
+                data: {
+                    username: name,
+                    password: password
+                },
+                success: function (json){
+
+                    if(json == 'ok'){
+                        alert('登录成功'+json);
+                        window.location.href = '/ArknightsCards/'
+                    }
+                    else{
+                        alert('登录失败');
+                    }
+
+                },
+                error:function(){
+                    alert('登录失败');
+                }
+            });
+        }
+    }
+</script>
+<style>
+    .container{
+        position: relative;
+    }
+    .title{
+    }
+    .input{
+        width: 100%;
+    }
+    .background-blue {
+        background-color: #00a0e9;
+    }
+    .form-login{
+        position: absolute;
+        left: 50%;
+        width: 500px;
+        height: 600px;
+        margin: 10vh auto 0;
+        padding: 60px;
+        background-color: #fff;
+    }
+    .img {
+        position: absolute;
+        left: 0;
+        width: 600px;
+        height: 600px;
+        background-color: #ffffff;
+        margin: 10vh auto 0;
+        overflow: hidden;
+    }
+    .input-group {
+        position: relative;
+        background-color: #d4effa;
+        width: 100vw;
+        height: 100vh;
+
+    }
+</style>
+</html>
